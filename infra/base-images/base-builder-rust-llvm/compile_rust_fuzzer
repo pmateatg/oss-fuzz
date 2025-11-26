@@ -1,0 +1,91 @@
+#!/bin/bash -eu
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+################################################################################
+
+MANIFEST_PATH="${1:-fuzz/Cargo.toml}"
+TARGET_TRIPLE="x86_64-unknown-linux-gnu"
+export CARGO_TARGET_DIR=$(pwd)/target
+
+if [ ! -f "$MANIFEST_PATH" ]; then
+    echo "ERROR: Manifest not found at $MANIFEST_PATH"
+    echo "Usage: compile_rust_fuzzer [path/to/fuzz/Cargo.toml]"
+    exit 1
+fi
+
+if [ "$RUST_SANITIZER" == "coverage" ]; then
+    fuzz_src_abspath=$(pwd)/fuzz
+    # Default directory is fuzz_targets, but some projects like image-rs use fuzzers.
+    while read i; do
+        export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix $i=$fuzz_src_abspath/$i"
+        # Bash while syntax so that we modify RUSTFLAGS in main shell instead of a subshell.
+    done <<< "$(find fuzz/ -name "*.rs" | cut -d/ -f2 | uniq)"
+fi
+
+if [ "$RUST_SANITIZER" == "introspector" ]; then
+    echo "INFO: Building for FuzzIntrospector (LTO Enabled)"
+
+    # RUSTFLAGS
+    #  -C lto=fat
+    #     Merge all crates into one LLVM module for cross-crate analysis
+    #  -C link-arg=-flto
+    #     Enable Link Time Optimization in the linker to merge C/C++ bitcode
+    #  -C debuginfo=1
+    #     Optimized debug info (line numbers only) to reduce bitcode size ~80%
+    #  -C force-frame-pointers
+    #     Preserve stack frames for accurate call tree depth calculations
+    #  -C codegen-units=1
+    #     Force single-threaded compilation for deterministic, monolithic bitcode
+    #  -C panic=abort
+    #     Remove unwinding paths to reduce graph noise (cleaner call trees)
+    #  -C embed-bitcode=yes"
+    #     Ensure intermediate libraries (.rlib) contain LLVM bitcode for the FuzzIntrospector LTO Pass
+
+    export RUSTFLAGS="$RUSTFLAGS -Clto=fat -C link-arg=-flto -Cdebuginfo=1 -Cforce-frame-pointers -Ccodegen-units=1 -Cpanic=abort -Cembed-bitcode=yes"
+
+    # Direct 'cargo build'
+    # We cannot use 'cargo fuzz' here because it forces its own profiles. While FI analysis handles different exports,
+    # the report will be silently lower quality if any of the above flags are different.
+    export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-fsanitize=fuzzer,address"
+    /rust/bin/cargo build --manifest-path "$MANIFEST_PATH" --target "$TARGET_TRIPLE" --bins
+
+    BUILD_MODE="debug"
+elif [ "$RUST_SANITIZER" == "coverage" ]; then
+    echo "INFO: Building for Coverage"
+
+    # Direct build to ensure we control the profile
+    export RUSTFLAGS="$RUSTFLAGS -Cdebug-assertions=no -Clink-arg=-fsanitize=fuzzer"
+    /rust/bin/cargo build --manifest-path $MANIFEST_PATH --target $TARGET_TRIPLE --bins
+
+    BUILD_MODE="debug"
+else
+    echo "INFO: Building for Fuzzing Execution ($SANITIZER)"
+
+    # For standard execution, we trust 'cargo fuzz' to handle the heavy lifting
+    # (setting up libfuzzer-sys, sanitizers, etc.)
+    /rust/bin/cargo fuzz build -O
+
+    BUILD_MODE="release"
+fi
+
+echo "INFO: Copying binaries to $OUT/"
+ARTIFACT_DIR="$CARGO_TARGET_DIR/$TARGET_TRIPLE/$BUILD_MODE"
+
+if [ ! -d "$ARTIFACT_DIR" ]; then
+    echo "ERROR: Build directory not found: $ARTIFACT_DIR"
+    exit 1
+fi
+
+find "$ARTIFACT_DIR" -maxdepth 1 -type f -executable -exec cp -v {} "$OUT/" \;
