@@ -799,7 +799,7 @@ def docker_run(run_args, *, print_output=True, architecture='x86_64'):
   """Calls `docker run`."""
   platform = 'linux/arm64' if architecture == 'aarch64' else 'linux/amd64'
   command = [
-      'docker', 'run', '--privileged', '--shm-size=2g', '--platform', platform
+      'docker', 'run', '--privileged', '--ulimit=nofile=65536:65536', '--shm-size=2g', '--platform', platform
   ]
   if os.getenv('OSS_FUZZ_SAVE_CONTAINERS_NAME'):
     command.append('--name')
