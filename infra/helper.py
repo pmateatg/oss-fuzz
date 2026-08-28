@@ -661,7 +661,7 @@ def docker_run(run_args, *, print_output=True, architecture='x86_64'):
   """Calls `docker run`."""
   platform = 'linux/arm64' if architecture == 'aarch64' else 'linux/amd64'
   command = [
-      'docker', 'run', '--privileged', '--shm-size=2g', '--platform', platform
+      'docker', 'run', '--privileged', '--ulimit=nofile=65536:65536', '--shm-size=2g', '--platform', platform
   ]
   if os.getenv('OSS_FUZZ_SAVE_CONTAINERS_NAME'):
     command.append('--name')
@@ -787,6 +787,10 @@ def build_fuzzers_impl(  # pylint: disable=too-many-arguments,too-many-locals,to
           '%s:%s' % (_get_absolute_path(source_path), workdir),
       ]
 
+  local_introspector = os.getenv('OSS_FUZZ_LOCAL_INTROSPECTOR')
+  if local_introspector:
+    command += ['-v', f'{_get_absolute_path(local_introspector)}:/fuzz-introspector']
+
   command += [
       '-v', f'{project_out}:/out', '-v', f'{project.work}:/work',
       f'gcr.io/oss-fuzz/{project.name}'
@@ -798,6 +802,14 @@ def build_fuzzers_impl(  # pylint: disable=too-many-arguments,too-many-locals,to
   if not result:
     logger.error('Building fuzzers failed.')
     return False
+
+  if os.getenv('OSS_FUZZ_FIX_PERMISSIONS', '1') == '1':
+    docker_run([
+        '-t',
+        '-v', f'{project_out}:/out',
+        f'gcr.io/oss-fuzz/{project.name}', '/bin/bash', '-c', 'chmod -R a+r /out'
+    ],
+               architecture=architecture)
 
   return True
 
