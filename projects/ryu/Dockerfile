@@ -14,9 +14,9 @@
 #
 ################################################################################
 
-FROM gcr.io/oss-fuzz-base/base-builder-rust
+FROM gcr.io/oss-fuzz-base/base-builder-rust-llvm
 
 RUN git clone --depth 1 https://github.com/dtolnay/ryu
-WORKDIR $SRC
+WORKDIR $SRC/ryu
 
 COPY build.sh $SRC/

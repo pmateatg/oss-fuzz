@@ -14,8 +14,4 @@
 # limitations under the License.
 #
 ################################################################################
-
-cd $SRC
-cd ryu
-cargo fuzz build -O
-cp fuzz/target/x86_64-unknown-linux-gnu/release/fuzz_ryu $OUT/
+compile_rust_fuzzer
