@@ -13,8 +13,28 @@
 # limitations under the License.
 #
 ################################################################################
-FROM gcr.io/oss-fuzz-base/base-builder-rust
+FROM gcr.io/oss-fuzz-base/base-builder-rust-llvm
 
+RUN apt-get update && apt-get install -y pkg-config && pip3 install meson ninja
+
+# Install nasm-2.16 and dav1d which are required for features in image-rs
+# but not available on this Ubuntu version.
+RUN curl -O https://www.nasm.us/pub/nasm/releasebuilds/2.16.01/nasm-2.16.01.tar.bz2 && \
+	tar -xf nasm-2.16.01.tar.bz2 && \
+	cd nasm-2.16.01 && \
+	./configure && \
+	make -j$(nproc) && \
+	make install
+
+RUN git clone --depth 1 https://code.videolan.org/videolan/dav1d.git \
+    && cd dav1d \
+    && mkdir build && cd build \
+    && meson setup .. --default-library=static --buildtype=release \
+    && ninja && ninja install \
+    && apt-get clean
+
+# Set the PKG_CONFIG_PATH so Rust can find the compiled dav1d library
+ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
 RUN git clone https://github.com/image-rs/image
 WORKDIR $SRC/image
 
