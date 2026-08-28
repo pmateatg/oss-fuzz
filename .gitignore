@@ -9,6 +9,16 @@
 infra/base-images/base-builder/indexer/indexer
 infra/base-images/base-builder/indexer/fuzzing_engine.a
 
+infra/base-images/base-builder/frontends
+infra/base-images/base-builder/src
+
+
+infra/base-images/base-clang/fuzz-introspector
+infra/base-images/base-builder-rust-llvm/frontends
+
+corpus
+fuzz_runs
+
 # IntelliJ IDEA
 /.idea
 **/*.iml
