@@ -22,7 +22,7 @@ sysctl -w vm.mmap_rnd_bits=28
 OSS_FUZZ_ON_DEMAND="${OSS_FUZZ_ON_DEMAND:-0}"
 
 # Used for Rust introspector builds
-RUST_SANITIZER=$SANITIZER
+export RUST_SANITIZER=$SANITIZER
 
 if [ "$FUZZING_LANGUAGE" = "jvm" ]; then
   if [ "$SANITIZER" != "address" ] && [ "$SANITIZER" != "coverage" ] && [ "$SANITIZER" != "undefined" ] && [ "$SANITIZER" != "none" ] && [ "$SANITIZER" != "introspector" ]; then
@@ -307,6 +307,7 @@ if [ "$FUZZING_LANGUAGE" = "rust" ]; then
   mkdir -p /rustc/$rustch/
   export rustdef=`rustup toolchain list | grep default | cut -d' ' -f1`
   cp -r /rust/rustup/toolchains/$rustdef/lib/rustlib/src/rust/library/ /rustc/$rustch/
+  cp -r /rust/rustup/toolchains/$rustdef/lib/rustlib/src /out/src
 fi
 
 if [ "${BUILD_UID-0}" -ne "0" ]; then
@@ -385,8 +386,12 @@ if [ "$SANITIZER" = "introspector" ] || [ "$RUST_SANITIZER" = "introspector" ]; 
     rsync -avu --delete "$SRC/inspector/" "$OUT/inspector"
   elif [ "$FUZZING_LANGUAGE" = "rust" ]; then
     echo "GOING rust route"
-    REPORT_ARGS="$REPORT_ARGS --target-dir=$SRC --out-dir=$SRC/inspector"
     REPORT_ARGS="$REPORT_ARGS --language=rust"
+    if [ "$RUST_INTROSPECTOR_LTO" == "1" ]; then
+      # Utilize the data from the Rust LLVM LTO pass
+      fuzz-introspector correlate --binaries-dir=$OUT/
+    fi
+    REPORT_ARGS="$REPORT_ARGS --target-dir=$SRC --out-dir=$SRC/inspector"
     fuzz-introspector full $REPORT_ARGS
     rsync -avu --delete "$SRC/inspector/" "$OUT/inspector"
   else
